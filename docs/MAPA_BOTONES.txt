@@ -1,0 +1,215 @@
+===========================================================
+ MAPA DE BOTONES  -  ESP32-S3 TX (inalambrico) -> RX (USB)
+ 23 botones. Canal MIDI 1. Encendido = CC 127, apagado = CC 0.
+ Actualizado 16 ago 2026: nuevo grupo de 5 (botones 12-16).
+===========================================================
+
+COMO FUNCIONA
+  TX = placa con los botones, va por ESP-NOW (sin cables).
+  RX = placa enchufada al PC por USB, aparece en FL Studio
+       como "ESP32-S3 MIDI Controller".
+  El TX decide los grupos; el RX solo traduce a MIDI.
+  Si cambias el mapa hay que regrabar LAS DOS placas.
+
+  CABLEADO DE CADA BOTON: una patilla al GPIO de la tabla,
+  la otra a GND. Sin resistencias (pull-up interno).
+  GPIO en reposo = 3.3V ; pulsado = GND.
+
+  OJO CON LA NUMERACION: el numero de boton es el de esta lista,
+  no el del GPIO. El "boton 1" es el que va al GPIO 4.
+  Si dices "el 4", aclara si es el boton 4 (GPIO 7) o el GPIO 4
+  (que es el boton 1).
+
+
+===========================================================
+ TABLA COMPLETA  (boton -> GPIO -> CC -> que hace)
+===========================================================
+
+ BOTON  GPIO   CC   GRUPO        QUE HACE
+ -----  ----  ----  -----------  --------------------------------
+   1      4    30   KIT          kit 4 (canales 34-38) ____________
+   2      5    31   KIT          kit 3 (canales 29-33) ____________
+   3      6    32   KIT          kit 6 (canales 44-48) ____________
+   4      7    33   KIT          kit 5 (canales 39-43) ____________
+   5     15    34   KIT          kit 2 (canales 24-28) ____________
+   6     16    35   KIT          kit 1 (canales 19-23) ____________
+
+   7      8    20   PAREJA       (Link to controller) ______________
+   8      9    21   PAREJA       (Link to controller) ______________
+
+   9     10    22   TRIO         (Link to controller) ______________
+  10     11    23   TRIO         (Link to controller) ______________
+  11     12    24   TRIO         (Link to controller) ______________
+
+  12     13    25   QUINTETO     (Link to controller) ______________
+  13      1    70   QUINTETO     (Link to controller) ______________
+  14      2    71   QUINTETO     (Link to controller) ______________
+  15     14    72   QUINTETO     (Link to controller) ______________
+  16     17    73   QUINTETO     (Link to controller) ______________
+
+  17     18    74   ON/OFF       (Link to controller) ______________
+  18     21    75   ON/OFF       (Link to controller) ______________
+  19     39    76   ON/OFF       (Link to controller) ______________
+  20     40    77   ON/OFF       (Link to controller) ______________
+  21     41    78   ON/OFF       (Link to controller) ______________
+  22     42    79   ON/OFF       (Link to controller) ______________
+  23     47    80   ON/OFF       (Link to controller) ______________
+
+ Las lineas en blanco son para que apuntes a mano que control
+ de FL le pusiste a cada boton.
+
+
+===========================================================
+ QUE SIGNIFICA CADA GRUPO
+===========================================================
+
+ KIT  (botones 1-6, CC 30-35)          LED AZUL
+   Excluyentes entre si: solo un kit suena a la vez.
+   Al pulsar uno, el anterior se apaga.
+   Volver a pulsar el que ya esta activo NO lo apaga, pero
+   reafirma su CC y parpadea igual.
+   Al arrancar el TX no hay ningun kit activo; el primero
+   que pulses queda seleccionado.
+   Los canales entre parentesis son el reparto que usabas con
+   el script viejo; ahora se mapean con Link to controller.
+
+ PAREJA  (botones 7-8, CC 20-21)       LED VERDE
+   Excluyentes entre los dos.
+
+ TRIO  (botones 9-11, CC 22-24)        LED AMARILLO
+   Excluyentes entre los tres.
+
+ QUINTETO  (botones 12-16, CC 25 y 70-73)   LED CIAN
+   Excluyentes entre los cinco: solo uno encendido a la vez.
+   Al pulsar otro, el anterior manda su CC a 0 automaticamente.
+   Volver a pulsar el que ya esta activo no lo apaga.
+
+ ON/OFF  (botones 17-23, CC 74-80)     LED MORADO
+   Independientes: cada uno va por su cuenta.
+   Pulsas y se queda encendido, vuelves a pulsar y se apaga.
+
+ Los cuatro grupos son independientes entre si: puedes tener
+ a la vez un kit, uno de la pareja, uno del trio, uno del
+ quinteto y los on/off que quieras.
+
+
+===========================================================
+ COMO SE MAPEA EN FL STUDIO
+===========================================================
+  SIN SCRIPT (16 ago 2026). Se borraron todos los scripts del
+  ESP32 porque devolvian MIDI a la placa en cada refresco de FL
+  y eso saturaba el audio. Ahora todo va por Link to controller.
+
+  MIDI Settings:
+    Input  ESP32-S3 MIDI Controller = ON
+    Output ESP32-S3 MIDI Controller = OFF   <<< importante
+      (con Output ON se hace un bucle y el audio se satura)
+    Controller type = (none) / Generic controller
+      NO elijas ningun script. Si aparece uno con el nombre
+      ESP32-S3 MIDI Controller es que volvio un device_*.py
+      a la carpeta Hardware: borralo.
+
+  Todos los CC (20-25, 30-35 y 70-80) se mapean igual:
+  clic derecho en el control de FL -> Link to controller ->
+  pulsa el boton en la placa.
+
+  Los kits (CC 30-35) ya no mutean canales solos: eso lo hacia
+  el script. La exclusion entre botones la sigue haciendo el
+  ESP32, asi que al pulsar un kit el anterior manda su CC a 0.
+  Linkea cada CC de kit al control que quieras (por ejemplo el
+  mute de un grupo, o el volumen de un canal).
+
+
+===========================================================
+ LED RGB INTEGRADO (el de la propia placa)
+===========================================================
+  El firmware ataca los GPIO 38 y 48 a la vez con la misma senal.
+  Las DevKitC-1 v1.0 llevan el LED en el 48 y las v1.1 en el 38,
+  asi que el mismo binario vale para las dos placas aunque sean
+  de variantes distintas. No toques esos dos pines.
+
+  Parpadea en LAS DOS placas cada vez que accionas un boton.
+  El color te dice de que grupo era, sin mirar la pantalla:
+
+     AZUL      kit (botones 1-6)
+     VERDE     pareja (botones 7-8)
+     AMARILLO  trio (botones 9-11)
+     CIAN      quinteto (botones 12-16)
+     MORADO    on/off (botones 17-23)
+
+  En el RX ademas:
+     ROJO      llego la pulsacion por radio pero FL no tiene
+               el puerto USB MIDI abierto. Revisa MIDI Settings.
+     VERDE fijo al conectar = FL ha abierto el puerto y el RX
+               le acaba de reenviar el estado de los 23 botones.
+
+  El RX NO parpadea con el latido de radio (el TX repite estado
+  cada segundo). Solo parpadea cuando pulsas un boton de verdad,
+  aunque esa pulsacion no cambie nada.
+
+
+===========================================================
+ HERRAMIENTAS DE DIAGNOSTICO
+===========================================================
+  Si algo deja de responder, en vez de adivinar:
+
+  1) Saber que placa hay en un puerto COM
+     python "C:\Users\MIGUEL\Documents\tools_pc\identificar_placa.py" COM4
+     El TX contesta con su tabla de botones. El RX no tiene
+     consola: su USB nativo es el interfaz MIDI.
+
+  2) Ver que botones llegan a la placa TX
+     python "C:\Users\MIGUEL\Documents\tools_pc\leer_arranque.py" COM4 30
+     Resetea el TX, lista los 23 pines con su nivel y luego imprime
+     una linea por cada pulsacion. Si pulsas y no sale nada, el fallo
+     es del boton o del cable, no del firmware.
+
+  3) Probar la cadena entera sin tocar un boton
+     python "C:\Users\MIGUEL\Documents\tools_pc\test_cadena.py" COM4
+     Simula pulsaciones y comprueba que los CC llegan al PC.
+     FL debe estar cerrado: Windows no deja abrir la misma entrada
+     MIDI en dos programas a la vez.
+
+  4) Ver en crudo que MIDI llega
+     python "C:\Users\MIGUEL\Documents\tools_pc\midi_monitor.py"
+
+  SIMULAR UN BOTON A MANO
+     El TX escucha por su puerto serie. Escribe el numero del boton
+     (1 a 23) y Enter, y actua como si lo hubieras pulsado. Sirve
+     para mapear en FL sin levantarte a tocar la placa.
+
+
+===========================================================
+ PINES QUE NO SE PUEDEN USAR (y por que)
+===========================================================
+  GPIO 0, 3, 45, 46     strapping: condicionan el arranque
+  GPIO 19, 20           USB nativo (D- y D+)
+  GPIO 26 a 32          flash SPI interna
+  GPIO 33 a 37          PSRAM octal (placa H16R8)
+  GPIO 38, 48           LED RGB de la placa
+  GPIO 43, 44           UART0 (consola y flasheo por serie)
+
+  Por eso son 23 botones y no mas.
+
+
+===========================================================
+ REGRABAR LAS PLACAS
+===========================================================
+  Carpeta:
+  C:\Users\MIGUEL\clon de git tx rx\tx6rx6\midi 2 placas 6mas6 inalambrico espnow
+
+  Identificacion de las dos placas (16 ago 2026):
+    TX  MAC DC:B4:D9:13:5F:F4   sale como puerto COM (consola)
+    RX  MAC FC:01:2C:CC:69:B8   sale como ESP32-S3 MIDI Controller
+
+  TX:  pio run -e esp32s3_tx -t upload --upload-port COMx
+  RX:  el RX en marcha no tiene puerto COM. Ponlo en modo descarga
+       (manten BOOT, pulsa y suelta RESET, suelta BOOT) y usa:
+       python "C:\Users\MIGUEL\Documents\tools_pc\flashear_rx.py"
+       Espera el puerto nuevo, comprueba la MAC para no grabar
+       la placa equivocada, y graba.
+       Al terminar, pulsa RESET en el RX para que vuelva a salir
+       como dispositivo MIDI.
+
+  Si da "Failed to connect / No serial data received":
+  manten pulsado BOOT, pulsa y suelta RESET, suelta BOOT, y repite.
