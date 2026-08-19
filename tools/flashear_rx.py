@@ -18,7 +18,7 @@ import time
 
 from serial.tools import list_ports
 
-PROYECTO = r"C:\Users\MIGUEL\clon de git tx rx\tx6rx6\midi 2 placas 6mas6 inalambrico espnow"
+PROYECTO = r"C:\Users\MIGUEL\Documents\esp32-live\firmware"
 PIO = os.path.expanduser(r"~\.platformio\penv\Scripts\platformio.exe")
 PYTHON = sys.executable
 MAC_TX = "dc:b4:d9:13:5f:f4"
