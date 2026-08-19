@@ -1,4 +1,4 @@
-BATERIA → MIDI (firmware v4)
+﻿BATERIA â†’ MIDI (firmware v4)
 =============================
 
 Hardware TX
@@ -12,16 +12,16 @@ Paquete ESP-NOW version 4
   + batFlags (bit0=cargando, bit1=baja <20%)
   + batMv (milivoltios del pack)
 
-MIDI (RX → FL, canal 1)
+MIDI (RX â†’ FL, canal 1)
 -----------------------
-  CC 110 = porcentaje 0–127  (100% ≈ 127)
+  CC 110 = porcentaje 0â€“127  (100% â‰ˆ 127)
   CC 111 = 127 si cargando, 0 si no  (ahora siempre 0 sin CHRG)
   CC 112 = 127 si bateria < 20%, 0 si no
 
-En FL
+En el DAW
 -----
   Input ESP32 ON, Output OFF, Controller type (none)
-  Link to controller → CC 110 / 111 / 112 si quieres un medidor o LED
+  MIDI Learn â†’ CC 110 / 111 / 112 si quieres un medidor o LED
 
 Flasheo
 -------

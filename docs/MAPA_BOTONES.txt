@@ -1,4 +1,4 @@
-===========================================================
+﻿===========================================================
  MAPA DE BOTONES  -  ESP32-S3 TX (inalambrico) -> RX (USB)
  23 botones. Canal MIDI 1. Encendido = CC 127, apagado = CC 0.
  Actualizado 16 ago 2026: nuevo grupo de 5 (botones 12-16).
@@ -6,8 +6,8 @@
 
 COMO FUNCIONA
   TX = placa con los botones, va por ESP-NOW (sin cables).
-  RX = placa enchufada al PC por USB, aparece en FL Studio
-       como "ESP32-S3 MIDI Controller".
+  RX = placa enchufada al PC por USB, aparece en el DAW / host MIDI
+       como "ESP32-S3 MIDI Trigger".
   El TX decide los grupos; el RX solo traduce a MIDI.
   Si cambias el mapa hay que regrabar LAS DOS placas.
 
@@ -34,26 +34,26 @@ COMO FUNCIONA
    5     15    34   KIT          kit 2 (canales 24-28) ____________
    6     16    35   KIT          kit 1 (canales 19-23) ____________
 
-   7      8    20   PAREJA       (Link to controller) ______________
-   8      9    21   PAREJA       (Link to controller) ______________
+   7      8    20   PAREJA       (MIDI Learn / mapear CC) ______________
+   8      9    21   PAREJA       (MIDI Learn / mapear CC) ______________
 
-   9     10    22   TRIO         (Link to controller) ______________
-  10     11    23   TRIO         (Link to controller) ______________
-  11     12    24   TRIO         (Link to controller) ______________
+   9     10    22   TRIO         (MIDI Learn / mapear CC) ______________
+  10     11    23   TRIO         (MIDI Learn / mapear CC) ______________
+  11     12    24   TRIO         (MIDI Learn / mapear CC) ______________
 
-  12     13    25   QUINTETO     (Link to controller) ______________
-  13      1    70   QUINTETO     (Link to controller) ______________
-  14      2    71   QUINTETO     (Link to controller) ______________
-  15     14    72   QUINTETO     (Link to controller) ______________
-  16     17    73   QUINTETO     (Link to controller) ______________
+  12     13    25   QUINTETO     (MIDI Learn / mapear CC) ______________
+  13      1    70   QUINTETO     (MIDI Learn / mapear CC) ______________
+  14      2    71   QUINTETO     (MIDI Learn / mapear CC) ______________
+  15     14    72   QUINTETO     (MIDI Learn / mapear CC) ______________
+  16     17    73   QUINTETO     (MIDI Learn / mapear CC) ______________
 
-  17     18    74   ON/OFF       (Link to controller) ______________
-  18     21    75   ON/OFF       (Link to controller) ______________
-  19     39    76   ON/OFF       (Link to controller) ______________
-  20     40    77   ON/OFF       (Link to controller) ______________
-  21     41    78   ON/OFF       (Link to controller) ______________
-  22     42    79   ON/OFF       (Link to controller) ______________
-  23     47    80   ON/OFF       (Link to controller) ______________
+  17     18    74   ON/OFF       (MIDI Learn / mapear CC) ______________
+  18     21    75   ON/OFF       (MIDI Learn / mapear CC) ______________
+  19     39    76   ON/OFF       (MIDI Learn / mapear CC) ______________
+  20     40    77   ON/OFF       (MIDI Learn / mapear CC) ______________
+  21     41    78   ON/OFF       (MIDI Learn / mapear CC) ______________
+  22     42    79   ON/OFF       (MIDI Learn / mapear CC) ______________
+  23     47    80   ON/OFF       (MIDI Learn / mapear CC) ______________
 
  Las lineas en blanco son para que apuntes a mano que control
  de FL le pusiste a cada boton.
@@ -71,7 +71,7 @@ COMO FUNCIONA
    Al arrancar el TX no hay ningun kit activo; el primero
    que pulses queda seleccionado.
    Los canales entre parentesis son el reparto que usabas con
-   el script viejo; ahora se mapean con Link to controller.
+   el script viejo; ahora se mapean con MIDI Learn / mapear CC.
 
  PAREJA  (botones 7-8, CC 20-21)       LED VERDE
    Excluyentes entre los dos.
@@ -94,23 +94,22 @@ COMO FUNCIONA
 
 
 ===========================================================
- COMO SE MAPEA EN FL STUDIO
+ COMO SE MAPEA EN el DAW / host MIDI
 ===========================================================
-  SIN SCRIPT (16 ago 2026). Se borraron todos los scripts del
-  ESP32 porque devolvian MIDI a la placa en cada refresco de FL
-  y eso saturaba el audio. Ahora todo va por Link to controller.
+    ESP32 porque devolvian MIDI a la placa en cada refresco de FL
+  y eso saturaba el audio. Ahora todo va por MIDI Learn / mapear CC.
 
   MIDI Settings:
-    Input  ESP32-S3 MIDI Controller = ON
-    Output ESP32-S3 MIDI Controller = OFF   <<< importante
+    Input  ESP32-S3 MIDI Trigger = ON
+    Output ESP32-S3 MIDI Trigger = OFF   <<< importante
       (con Output ON se hace un bucle y el audio se satura)
     Controller type = (none) / Generic controller
       NO elijas ningun script. Si aparece uno con el nombre
-      ESP32-S3 MIDI Controller es que volvio un device_*.py
+      ESP32-S3 MIDI Trigger es que volvio un device_*.py
       a la carpeta Hardware: borralo.
 
   Todos los CC (20-25, 30-35 y 70-80) se mapean igual:
-  clic derecho en el control de FL -> Link to controller ->
+  clic derecho en el control de FL -> MIDI Learn / mapear CC ->
   pulsa el boton en la placa.
 
   Los kits (CC 30-35) ya no mutean canales solos: eso lo hacia
@@ -200,7 +199,7 @@ COMO FUNCIONA
 
   Identificacion de las dos placas (16 ago 2026):
     TX  MAC DC:B4:D9:13:5F:F4   sale como puerto COM (consola)
-    RX  MAC FC:01:2C:CC:69:B8   sale como ESP32-S3 MIDI Controller
+    RX  MAC FC:01:2C:CC:69:B8   sale como ESP32-S3 MIDI Trigger
 
   TX:  pio run -e esp32s3_tx -t upload --upload-port COMx
   RX:  el RX en marcha no tiene puerto COM. Ponlo en modo descarga

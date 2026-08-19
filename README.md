@@ -1,75 +1,74 @@
-# esp32-live
+# tx-rx-max-2 / esp32-live
 
-Controlador MIDI de 23 botones para tocar en vivo con FL Studio.
-Carpeta limpia: solo lo que se usa, sin copias antiguas.
+Disparador MIDI universal de 23 botones (ESP32-S3).
+TX inalámbrico (ESP-NOW) → RX USB MIDI. Sin dependencias de ningún DAW.
 
-## Qué es cada cosa
+## Carpetas
 
 | Carpeta | Contenido |
 |---|---|
-| `firmware/` | Código de las dos placas ESP32-S3 (PlatformIO) |
-| `docs/` | Mapa de botones y checklist para tocar |
-| `tools/` | Utilidades de diagnóstico y mantenimiento |
+| `firmware/` | Código TX/RX (PlatformIO) |
+| `docs/` | Mapa de botones, batería, esquemas |
+| `tools/` | Identificar placa y flashear RX |
 
-## Las dos placas
+## Placas
 
-- **TX**: la de los botones. Va por ESP-NOW, sin cables. MAC `DC:B4:D9:13:5F:F4`.
-- **RX**: la enchufada al PC. Aparece en FL como `ESP32-S3 MIDI Controller`. MAC `FC:01:2C:CC:69:B8`.
+- **TX**: botones + batería. ESP-NOW. MAC `DC:B4:D9:13:5F:F4`
+- **RX**: USB al PC. Nombre MIDI: `ESP32-S3 MIDI Trigger`. MAC `FC:01:2C:CC:69:B8`
 
-El mapa de botones es compartido, así que **al cambiarlo hay que regrabar las dos**.
+Al cambiar el mapa de botones, regrabar **las dos**.
 
-## Botones
-
-23 en total, agrupados así:
+## Botones → MIDI CC (canal 1)
 
 | Grupo | Botones | CC | Comportamiento | LED |
 |---|---|---|---|---|
-| Kits | 1-6 | 30-35 | Excluyentes | Azul |
-| Pareja | 7-8 | 20-21 | Excluyentes | Verde |
-| Trío | 9-11 | 22-24 | Excluyentes | Amarillo |
-| Quinteto | 12-16 | 25, 70-73 | Excluyentes | Cian |
-| On/off | 17-23 | 74-80 | Independientes | Morado |
+| Excluyente A | 1–6 | 30–35 | Solo uno activo | Azul |
+| Excluyente B | 7–8 | 20–21 | Solo uno activo | Verde |
+| Excluyente C | 9–11 | 22–24 | Solo uno activo | Amarillo |
+| Excluyente D | 12–16 | 25, 70–73 | Solo uno activo | Cian |
+| Toggle | 17–23 | 74–80 | Independientes | Morado |
 
-Detalle completo con GPIO de cada botón en `docs/MAPA_BOTONES.txt`.
+Valor: **127** = encendido, **0** = apagado.
 
-## Regrabar las placas
+Batería (opcional, GPIO3 + divisor 100k):
+
+| CC | Significado |
+|---|---|
+| 110 | % carga 0–127 |
+| 111 | 127 si cargando (si CHRG cableado) |
+| 112 | 127 si batería &lt; 20% |
+
+Detalle GPIO: `docs/MAPA_BOTONES.txt`
+
+## Uso en cualquier DAW / host MIDI
+
+El RX aparece como dispositivo MIDI USB estándar. En Ableton, Bitwig,
+Reaper, Cubase, FL, etc.:
+
+1. Activa **entrada** del dispositivo `ESP32-S3 MIDI Trigger`
+2. Deja **salida** hacia esa placa **desactivada** (evita bucles)
+3. Mapea CC a lo que quieras (MIDI Learn / Link)
+
+No hace falta ningún script del host.
+
+## Flashear
 
 ```powershell
 cd firmware
-pio run -e esp32s3_tx -t upload --upload-port COM4   # TX
-python ..\tools\flashear_rx.py                        # RX
+pio run -e esp32s3_tx -t upload --upload-port COMx   # TX
+python ..\tools\flashear_rx.py                        # RX (modo boot)
 ```
 
-El RX en marcha no tiene puerto COM porque su USB es el interfaz MIDI.
-`flashear_rx.py` espera a que lo pongas en modo descarga (mantener BOOT,
-pulsar y soltar RESET, soltar BOOT), comprueba la MAC para no grabar la
-placa equivocada, y lo graba. Al terminar, pulsa RESET para que vuelva
-a salir como dispositivo MIDI.
-
-## FL Studio: sin scripts
-
-Los `device_*.py` que se autoasignaban al ESP32 devolvían MIDI a la placa
-en cada refresco de FL y eso saturaba el audio. Se quitaron todos.
-
-Configuración correcta:
-
-- Input `ESP32-S3 MIDI Controller` = ON
-- Output `ESP32-S3 MIDI Controller` = **OFF**
-- Controller type = **(none)**
-
-Todo se mapea con Link to controller: clic derecho en el control de FL,
-Link to controller, y pulsar el botón en la placa.
+Tras flashear el RX, pulsa RESET. Windows debe mostrar el nuevo nombre MIDI.
 
 ## Herramientas
 
-| Script | Para qué |
+| Script | Uso |
 |---|---|
-| `tools/identificar_placa.py COM4` | Dice si en ese puerto está el TX (contesta con su tabla de botones) |
-| `tools/flashear_rx.py` | Graba el RX comprobando la MAC antes |
-| `tools/esp32_sin_scripts.ps1` | Pone en cuarentena cualquier script del ESP32 que reaparezca en FL. Se ejecuta solo desde `MODO VIVO.bat` |
-| `tools/blindar_carpeta_esp32.ps1` | Impide por permisos que se creen scripts nuevos en la carpeta del ESP32. `-Quitar` lo revierte |
+| `tools/identificar_placa.py COMx` | Confirma TX por serie |
+| `tools/flashear_rx.py` | Graba RX comprobando MAC |
 
-Los scripts de Python necesitan pyserial; el Python de PlatformIO ya lo trae:
+Python con pyserial (el de PlatformIO vale):
 
 ```powershell
 & "$env:USERPROFILE\.platformio\penv\Scripts\python.exe" tools\identificar_placa.py COM4

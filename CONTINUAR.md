@@ -1,44 +1,35 @@
-﻿CONTINUAR — 19 ago 2026 (guardado local ~4:57)
-===============================================
+﻿CONTINUAR — instalacion limpia MIDI universal (19 ago 2026)
+===========================================================
+
+OBJETIVO
+--------
+ESP32 = disparador MIDI universal (CC). Sin scripts de host.
+Sin acoplamiento a FL Studio en el repo.
 
 FIRMWARE
 --------
-TX y RX flasheados con firmware v4 (bateria GPIO3).
-TX MAC dc:b4:d9:13:5f:f4 (a bateria)
-RX MAC fc:01:2c:cc:69:b8 (USB PC = ESP32-S3 MIDI Controller)
+  Repo: https://github.com/mmiiguel2020-code/tx-rx-max-2
+  Local: Documents\esp32-live
+  Producto USB RX: "ESP32-S3 MIDI Trigger"  (hay que reflash RX)
+  TX MAC dc:b4:d9:13:5f:f4
+  RX MAC fc:01:2c:cc:69:b8
+  Bateria GPIO3 → CC 110/111/112
 
-MIDI bateria canal 1:
-  CC 110 = % 0-127
-  CC 111 = cargando (0 por ahora; CHRG no cableado)
-  CC 112 = alerta <20%
+HOST MIDI (cualquier DAW)
+-------------------------
+  Input del ESP32 = ON
+  Output hacia ESP32 = OFF
+  Sin controller scripts
+  MIDI Learn / mapear CC
 
-Hardware TX:
-  B+ --100k-- GPIO3 --100k-- GND  (YA instalado segun chat 4:05)
-  Alimentacion: TP4056+boost ~5V → switch → pin 5V
-  Placa del humo: NO usar. MT3608 = repuesto.
+ALIMENTACION TX
+---------------
+  TP4056+boost ~5V → switch → pin 5V
+  B+ --100k-- GPIO3 --100k-- GND
+  docs\BATERIA_TX.txt / SOLDAR_PASO_A_PASO.txt
 
-FL
---
-  Audio: UMC ASIO Driver
-  Input ESP32 ON, Output OFF, type (none)
-  Link to controller → CC110 (y 111/112 si quieres)
-  Proyecto reciente: Desktop\batx 18ago\batx 18 ago 2.flp
-
-DOCS / RECUPERACION
--------------------
-  docs\BATERIA_MIDI.txt
-  docs\BATERIA_TX.txt
-  Desktop\RECUPERADO_chat_firmware_bateria_19ago.txt  ← chat perdido 3:54-4:19
-  Desktop\NOTA_CONVERSACION_ESP32_FL_18ago.txt
-
-GIT
----
-  https://github.com/mmiiguel2020-code/tx-rx-max-2
-  Local dirty: main.cpp + CONTINUAR + docs bateria (no push aun)
-
-PENDIENTE
----------
-  [ ] Probar CC110 en FL (Link to controller)
-  [ ] Commit/push firmware v4 a tx-rx-max-2
-  [ ] GPIO46 CHRG cuando se cablee
-  [ ] 5 pilas en paralelo cuando las tenga
+LIMPIEZA HECHA
+--------------
+  Quitados del repo: tools FL (limpiar_flp, blindar, esp32_sin_scripts)
+  Docs FL checklist vivo eliminado
+  Scripts Grupos5/Cycle5 fuera de Hardware FL

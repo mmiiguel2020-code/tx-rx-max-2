@@ -543,7 +543,7 @@ void setup() {
 #endif
 
 #if defined(ROLE_RX)
-  USB.productName("ESP32-S3 MIDI Controller");
+  USB.productName("ESP32-S3 MIDI Trigger");
   USB.manufacturerName("ESP32S3");
   USB.begin();
   initEspNow();

@@ -1,0 +1,22 @@
+MIDI UNIVERSAL — como usarlo en cualquier programa
+==================================================
+
+El RX se presenta como:
+  Nombre: ESP32-S3 MIDI Trigger
+  Tipo:   USB MIDI device
+  Canal:  1
+  Mensajes: Control Change (CC)
+
+ENCENDIDO = CC valor 127
+APAGADO   = CC valor 0
+
+Grupos excluyentes (radio): al activar uno, el anterior manda 0 solo.
+Toggles: cada boton independidente.
+
+En el DAW / VST host:
+  1) Conecta el RX por USB
+  2) Activa MIDI Input de "ESP32-S3 MIDI Trigger"
+  3) NO actives MIDI Output hacia esa misma placa
+  4) Usa MIDI Learn en el parametro y pulsa el boton
+
+No requiere FL Studio ni Python scripts en el PC.
