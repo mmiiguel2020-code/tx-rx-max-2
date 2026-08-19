@@ -1,0 +1,34 @@
+BATERIA → MIDI (firmware v4)
+=============================
+
+Hardware TX
+-----------
+  B+ --100k-- GPIO3 --100k-- GND
+  GPIO46 (CHRG) = omitido por ahora en firmware
+
+Paquete ESP-NOW version 4
+-------------------------
+  + batPercent (0-100)
+  + batFlags (bit0=cargando, bit1=baja <20%)
+  + batMv (milivoltios del pack)
+
+MIDI (RX → FL, canal 1)
+-----------------------
+  CC 110 = porcentaje 0–127  (100% ≈ 127)
+  CC 111 = 127 si cargando, 0 si no  (ahora siempre 0 sin CHRG)
+  CC 112 = 127 si bateria < 20%, 0 si no
+
+En FL
+-----
+  Input ESP32 ON, Output OFF, Controller type (none)
+  Link to controller → CC 110 / 111 / 112 si quieres un medidor o LED
+
+Flasheo
+-------
+  RX (USB al PC):  pio run -e esp32s3_rx -t upload
+  TX (USB temporal): pio run -e esp32s3_tx -t upload
+  Hay que grabar LAS DOS (version de paquete nueva).
+
+Serie TX (cada 5 s)
+-------------------
+  [vivo] ... bat=xxxxmV yy% flags=0xZZ ...

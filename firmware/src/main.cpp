@@ -59,18 +59,31 @@ CRGB groupColor(uint8_t group) {
 // pin solo lo usa el TX; el RX solo necesita cc y el orden de la tabla.
 //
 // Pines descartados en el ESP32-S3 y por que:
-//   0, 3, 45, 46      strapping (condicionan el arranque)
+//   0, 45, 46         strapping (condicionan el arranque)
 //   19, 20            USB nativo D-/D+
 //   26..32            flash SPI interna
 //   33..37            PSRAM octal (placa H16R8)
 //   38, 48            LED RGB de la placa
 //   43, 44            UART0 (consola y flasheo por serie)
+// GPIO 3 = ADC bateria (divisor 100k/100k desde B+). Es strapping suave;
+// el divisor no lo fuerza a 0/3V3 al arrancar.
 // ---------------------------------------------------------------------------
 struct ButtonDef {
   uint8_t pin;
   uint8_t cc;
   uint8_t group;
 };
+
+// Telemetria de bateria (solo TX mide; RX traduce a MIDI CC)
+static constexpr uint8_t BAT_ADC_PIN = 3;
+// -1 = no cableado (usuario omitio CHRG). Si luego sueldas CHRG, pon 46.
+static constexpr int8_t BAT_CHRG_PIN = -1;
+static constexpr uint8_t CC_BAT_PERCENT = 110;  // 0-127
+static constexpr uint8_t CC_BAT_CHARGING = 111; // 0 / 127
+static constexpr uint8_t CC_BAT_LOW = 112;      // 0 / 127 si < 20%
+static constexpr uint8_t BAT_LOW_PERCENT = 20;
+static constexpr float BAT_DIVIDER_RATIO = 2.0f;  // 100k + 100k
+static constexpr uint32_t BAT_SAMPLE_MS = 500;
 
 static constexpr ButtonDef BUTTONS[] = {
     // Botones 1-6: kits, excluyentes entre si
@@ -98,9 +111,14 @@ struct __attribute__((packed)) EspNowStatePacket {
   uint8_t lastPressed;  // indice del ultimo boton pulsado, 0xFF si ninguno
   uint8_t pressCount;   // sube en CADA pulsacion, cambie o no el estado
   uint32_t mask;        // bit i = boton i de BUTTONS activo
+  uint8_t batPercent;   // 0-100
+  uint8_t batFlags;     // bit0=cargando, bit1=baja
+  uint16_t batMv;       // milivoltios del pack (0 si no hay lectura)
 };
 
-static constexpr uint8_t PACKET_VERSION = 3;
+static constexpr uint8_t BAT_FLAG_CHARGING = 0x01;
+static constexpr uint8_t BAT_FLAG_LOW = 0x02;
+static constexpr uint8_t PACKET_VERSION = 4;
 static constexpr uint8_t ESP_NOW_CHANNEL = 1;
 static constexpr uint8_t BROADCAST_MAC[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
@@ -108,13 +126,17 @@ static constexpr uint8_t BROADCAST_MAC[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
 bool physicalPressed[BUTTON_COUNT] = {};
 bool buttonState[BUTTON_COUNT] = {};
 uint32_t lastChangeMs[BUTTON_COUNT] = {};
-EspNowStatePacket txPacket = {PACKET_VERSION, 0, 0xFF, 0, 0};
+EspNowStatePacket txPacket = {PACKET_VERSION, 0, 0xFF, 0, 0, 0, 0, 0};
 uint32_t lastTxMs = 0;
 uint32_t lastUserActivityMs = 0;
 uint32_t lastScanMs = 0;
+uint32_t lastBatSampleMs = 0;
 uint8_t lastPressedGroup = 0;
 uint8_t lastPressedIndex = 0xFF;
 uint8_t pressCount = 0;
+uint8_t batPercent = 0;
+uint8_t batFlags = 0;
+uint16_t batMv = 0;
 static constexpr uint32_t TX_HEARTBEAT_MS = 1000;
 // 0 = sin deep sleep. En vivo no interesa que se duerma a mitad de tema.
 static constexpr uint32_t TX_IDLE_DEEP_SLEEP_MS = 0;
@@ -125,6 +147,52 @@ void initButtons() {
     pinMode(BUTTONS[i].pin, INPUT_PULLUP);
     physicalPressed[i] = (digitalRead(BUTTONS[i].pin) == LOW);
     buttonState[i] = false;
+  }
+}
+
+// Li-ion 1S aproximado: 3.30 V = 0%, 4.20 V = 100%
+uint8_t voltageToPercent(uint16_t mv) {
+  if (mv <= 3300) return 0;
+  if (mv >= 4200) return 100;
+  static const uint16_t tableMv[] = {3300, 3400, 3500, 3600, 3700, 3800, 3900, 4000, 4100, 4200};
+  static const uint8_t tablePct[] = {0, 5, 10, 20, 30, 50, 65, 80, 90, 100};
+  for (uint8_t i = 1; i < 10; i++) {
+    if (mv <= tableMv[i]) {
+      const uint16_t span = tableMv[i] - tableMv[i - 1];
+      const uint16_t pos = mv - tableMv[i - 1];
+      const uint8_t dp = tablePct[i] - tablePct[i - 1];
+      return tablePct[i - 1] + (uint8_t)((pos * dp) / span);
+    }
+  }
+  return 100;
+}
+
+void initBattery() {
+  analogReadResolution(12);
+  analogSetPinAttenuation(BAT_ADC_PIN, ADC_11db);
+  pinMode(BAT_ADC_PIN, INPUT);
+  if (BAT_CHRG_PIN >= 0) {
+    pinMode((uint8_t)BAT_CHRG_PIN, INPUT_PULLUP);
+  }
+}
+
+void sampleBattery(uint32_t nowMs) {
+  if (nowMs - lastBatSampleMs < BAT_SAMPLE_MS && lastBatSampleMs != 0) return;
+  lastBatSampleMs = nowMs;
+
+  uint32_t sum = 0;
+  for (uint8_t i = 0; i < 8; i++) {
+    sum += analogReadMilliVolts(BAT_ADC_PIN);
+  }
+  const uint16_t adcMv = (uint16_t)(sum / 8);
+  batMv = (uint16_t)((float)adcMv * BAT_DIVIDER_RATIO + 0.5f);
+  batPercent = voltageToPercent(batMv);
+  batFlags = 0;
+  if (BAT_CHRG_PIN >= 0 && digitalRead((uint8_t)BAT_CHRG_PIN) == LOW) {
+    batFlags |= BAT_FLAG_CHARGING;
+  }
+  if (batPercent < BAT_LOW_PERCENT) {
+    batFlags |= BAT_FLAG_LOW;
   }
 }
 
@@ -140,6 +208,7 @@ void initLog() {
   Serial.printf(" MAC   : %s\n", WiFi.macAddress().c_str());
   Serial.printf(" Canal : %u\n", ESP_NOW_CHANNEL);
   Serial.printf(" Botones: %u\n", BUTTON_COUNT);
+  Serial.printf(" Bateria ADC GPIO%u  CHRG=%d\n", BAT_ADC_PIN, (int)BAT_CHRG_PIN);
   Serial.println("=========================================");
   Serial.println(" n   GPIO  CC   grupo  nivel");
   uint8_t wired = 0;
@@ -243,6 +312,9 @@ void updatePacketFromState() {
   txPacket.lastPressed = lastPressedIndex;
   txPacket.pressCount = pressCount;
   txPacket.mask = mask;
+  txPacket.batPercent = batPercent;
+  txPacket.batFlags = batFlags;
+  txPacket.batMv = batMv;
 }
 
 uint64_t buildWakeMaskFromButtons() {
@@ -284,11 +356,13 @@ static void registerMidiInterface() {
 
 uint32_t rxMask = 0;
 uint8_t rxLastPressCount = 0;
+uint8_t rxBatPercent = 0xFF;
+uint8_t rxBatFlags = 0xFF;
 bool rxSeenFirstPacket = false;
 bool rxEspNowReady = false;
 portMUX_TYPE rxPacketMux = portMUX_INITIALIZER_UNLOCKED;
 volatile bool rxPacketPending = false;
-EspNowStatePacket rxPendingPacket = {PACKET_VERSION, 0, 0xFF, 0, 0};
+EspNowStatePacket rxPendingPacket = {PACKET_VERSION, 0, 0xFF, 0, 0, 0, 0, 0};
 
 static inline void sendMidi3(uint8_t status, uint8_t d1, uint8_t d2) {
   uint8_t msg[3] = {status, d1, d2};
@@ -341,6 +415,30 @@ void sendAllStateToMidi() {
   if (!tud_midi_mounted()) return;
   for (uint8_t i = 0; i < BUTTON_COUNT; i++) {
     sendCC(BUTTONS[i].cc, (rxMask & (1UL << i)) ? 127 : 0);
+  }
+  if (rxBatPercent != 0xFF) {
+    const uint8_t ccPct = (uint8_t)((rxBatPercent * 127UL) / 100UL);
+    sendCC(CC_BAT_PERCENT, ccPct);
+    sendCC(CC_BAT_CHARGING, (rxBatFlags & BAT_FLAG_CHARGING) ? 127 : 0);
+    sendCC(CC_BAT_LOW, (rxBatFlags & BAT_FLAG_LOW) ? 127 : 0);
+  }
+}
+
+void sendBatteryMidi(const EspNowStatePacket &packet) {
+  if (!tud_midi_mounted()) return;
+  // 0xFF = paquete v3 sin bateria (TX aun no reflasheado)
+  if (packet.batPercent == 0xFF) return;
+  const uint8_t pct = packet.batPercent > 100 ? 100 : packet.batPercent;
+  const uint8_t flags = packet.batFlags;
+  const uint8_t ccPct = (uint8_t)((pct * 127UL) / 100UL);
+  if (pct != rxBatPercent) {
+    sendCC(CC_BAT_PERCENT, ccPct);
+    rxBatPercent = pct;
+  }
+  if (flags != rxBatFlags) {
+    sendCC(CC_BAT_CHARGING, (flags & BAT_FLAG_CHARGING) ? 127 : 0);
+    sendCC(CC_BAT_LOW, (flags & BAT_FLAG_LOW) ? 127 : 0);
+    rxBatFlags = flags;
   }
 }
 
@@ -409,12 +507,25 @@ void initEspNow() {
 }
 
 #if defined(ROLE_RX)
+// v3 = solo botones (TX viejo sin USB). v4 = botones + bateria.
+static constexpr size_t PACKET_SIZE_V3 = 8;   // version..mask
+static constexpr size_t PACKET_SIZE_V4 = sizeof(EspNowStatePacket);
+
 void onEspNowRx(const uint8_t *mac, const uint8_t *data, int len) {
   (void)mac;
-  if (len != sizeof(EspNowStatePacket)) return;
-  EspNowStatePacket packet;
-  memcpy(&packet, data, sizeof(packet));
-  if (packet.version != PACKET_VERSION) return;
+  EspNowStatePacket packet = {};
+  if (len == (int)PACKET_SIZE_V4) {
+    memcpy(&packet, data, PACKET_SIZE_V4);
+    if (packet.version != 4) return;
+  } else if (len == (int)PACKET_SIZE_V3) {
+    memcpy(&packet, data, PACKET_SIZE_V3);
+    if (packet.version != 3) return;
+    packet.batPercent = 0xFF;  // sin telemetria
+    packet.batFlags = 0;
+    packet.batMv = 0;
+  } else {
+    return;
+  }
   portENTER_CRITICAL(&rxPacketMux);
   rxPendingPacket = packet;
   rxPacketPending = true;
@@ -444,6 +555,8 @@ void setup() {
 
 #if defined(ROLE_TX)
   initButtons();
+  initBattery();
+  sampleBattery(millis());
   initLog();
   lastUserActivityMs = millis();
   updatePacketFromState();
@@ -455,6 +568,7 @@ void setup() {
 void loop() {
 #if defined(ROLE_TX)
   uint32_t now = millis();
+  sampleBattery(now);
   if (now - lastScanMs >= TX_SCAN_INTERVAL_MS) {
     lastScanMs = now;
     const bool fromSerial = handleSerialCommands();
@@ -474,8 +588,9 @@ void loop() {
     static uint32_t lastLogMs = 0;
     if (now - lastLogMs >= 5000) {
       lastLogMs = now;
-      Serial.printf("[vivo] mascara=0x%06lX  envio=%s\n", (unsigned long)txPacket.mask,
-                    rc == ESP_OK ? "ok" : esp_err_to_name(rc));
+      Serial.printf("[vivo] mascara=0x%06lX  bat=%umV %u%% flags=0x%02X  envio=%s\n",
+                    (unsigned long)txPacket.mask, (unsigned)batMv, (unsigned)batPercent,
+                    (unsigned)batFlags, rc == ESP_OK ? "ok" : esp_err_to_name(rc));
     }
   }
   ledUpdate();
@@ -511,9 +626,19 @@ void loop() {
   portEXIT_CRITICAL(&rxPacketMux);
 
   if (hasPendingPacket) {
+    sendBatteryMidi(packetToApply);
     // Solo parpadea si cambio un boton, no con cada latido del TX
     const uint8_t group = applyPacketToMidi(packetToApply);
     if (group != NO_CHANGE) ledFlash(midiMounted ? groupColor(group) : CRGB::Red);
+    else if ((packetToApply.batFlags & BAT_FLAG_LOW) && midiMounted) {
+      // Destello corto rojo solo cuando llega alerta de pila baja (latido)
+      static uint32_t lastLowFlashMs = 0;
+      const uint32_t t = millis();
+      if (t - lastLowFlashMs > 3000) {
+        ledFlash(CRGB::Orange);
+        lastLowFlashMs = t;
+      }
+    }
   }
   ledUpdate();
   delay(1);

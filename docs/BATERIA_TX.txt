@@ -1,0 +1,140 @@
+NOTAS BATERIA TX — 18 ago 2026
+================================
+
+Celdas
+------
+Usuario planea 5 celdas en paralelo. Dijo "18256"; casi seguro son
+18650 (18 mm x 65 mm). Confirmar antes de comprar.
+NO poner 5S en serie: el ESP32 necesita ~1S (3.3–4.2 V).
+5P (paralelo) = sigue siendo 1S: mismo voltaje, mas capacidad (Ah).
+
+Modulo fisico recomendado
+-------------------------
+Para 1S (paralelo):
+  - Placa TP4056 + proteccion (DW01 + MOSFET), salida OUT a la carga.
+  - O mejor si el pack es grande: BMS 1S + cargador USB-C / 5V
+    dimensionado (TP4056 solo da ~1 A: 5x18650 carga MUY lenta).
+
+Divisor ADC (nivel de carga)
+----------------------------
+  BATT+ ---- 100k ---- ADC_GPIO ---- 100k ---- GND
+  (ratio 2.0; en ADC max ~2.1 V con pila a 4.2 V)
+
+  ASIGNADO 18 ago 2026:
+    BAT_ADC  = GPIO 3   (ADC1, libre; divisor 100k/100k)
+    BAT_CHRG = GPIO 46  (digital, lee pin CHRG del TP4056;
+                         evitar forzar nivel raro al arranque;
+                         si molesta al boot, cambiar a otro digital libre)
+
+  Prohibidos: GPIO 4 (boton1), GPIO 47 (boton23), 38/48 (LED),
+  35-37 (PSRAM N16R8), 19-20 (USB).
+  ADC en S3: solo 1-10 (ADC1, preferido) y 11-20 (ADC2).
+  En ADC1 el unico libre de la tabla de botones es GPIO 3.
+
+Deteccion de carga (CHRG)
+-------------------------
+  Pin CHRG del TP4056 (suele ir a LED): leer con GPIO digital
+  pull-up interno. LOW = cargando, HIGH = no cargando / fin
+  (comprobar polaridad en la placa concreta).
+
+Switch
+------
+  SI: interruptor entre OUT+ del modulo (BMS/TP4056) y VIN del
+  ESP32 TX. Asi apagas el TX sin desconectar celdas.
+  La carga USB del TP4056 puede seguir con el switch OFF si el
+  cableado deja BATT al cargador y solo corta la carga al ESP32.
+
+Como se ve en la laptop
+-----------------------
+  El RX ya es USB MIDI (no Serial fiable en vivo).
+  Plan: el TX manda por ESP-NOW voltaje/%/flag_cargando;
+  el RX traduce a MIDI CC (Link to controller en FL), por ejemplo:
+    CC 110 = porcentaje 0–127
+    CC 111 = 127 si cargando, 0 si no
+    CC 112 = 127 si bateria < 20% (alerta)
+  Opcional: LED en RX cuando alerta/cargando.
+
+Firmware
+--------
+  Integrar en tx-rx-max-2 / esp32-live (NO sketches sueltos de Qwen).
+  GPIO 4 prohibido para ADC.
+
+TU MODULO (fotos Keep) — 18 ago 2026
+=====================================
+En el PDF hay DOS placas distintas:
+
+A) Micro-USB, pads B+ B- OUT+ OUT- (o similares) = TP4056 clasico + proteccion
+   -> ESTA es la que usamos como referencia principal.
+
+B) USB-C, bobina "100", pads + - B+ B- = cargador + boost a ~5V
+   -> NO es un TP4056 simple. Si la usas, el divisor va a B+, no al +.
+
+Cableado A (TP4056):
+  Pilas paralelo -> B+ / B-
+  OUT+ -> switch -> VIN ESP32
+  OUT- + B- + GND ESP32 = UNA sola tierra
+  B+ --100k-- GPIO3 --100k-- GND
+  USB/IN solo para cargar
+
+
+MISMA PLACA (ambas fotos Keep) — 18 ago 2026
+=============================================
+Una sola placa vista por los dos lados.
+Pads que importan:
+  B+  B-   = baterias (PACK)
+  +   -    = salida hacia el ESP32 (a menudo ~5V si lleva bobina/boost)
+  USB      = solo para cargar
+
+Cableado:
+  PACK+ -> B+
+  PACK- -> B-
+  +  -> switch -> VIN del ESP32
+  -  -> GND del ESP32
+  Tierra unica: B- y - y GND ESP32 juntos
+  Divisor: B+ --100k-- GPIO3 --100k-- GND
+  (medir en B+, NUNCA en el pad + de salida)
+
+
+
+
+
+
+PLAN FINAL ALIM (18 ago) — TP4056 + MT3608
+===========================================
+Usar: TP4056 nuevo (NO el que hizo humo) + MT3608.
+1) Pilas paralelo -> B+ B- del TP4056
+2) OUT+ OUT- del TP4056 -> VIN+ VIN- del MT3608
+   (si el TP4056 solo tiene + - de bateria, usar esos con proteccion;
+    preferible TP4056 con OUT tras proteccion)
+3) Ajustar MT3608 salida a ~5.0 V ANTES del ESP32
+4) MT3608 OUT+ -> switch -> ESP32 5V
+   MT3608 OUT- -> ESP32 GND
+5) Medicion: B+ --100k-- GPIO3 --100k-- GND
+6) USB del TP4056 solo para cargar
+GPIO46: omitir por ahora
+
+===============================================
+Lado USB-C: IN+ IN- (entrada de carga; o usar el USB-C)
+Pilas: B+ B-
+Salida a carga (ESP32): VO+ VO-  (a veces tambien marcados + -)
+LED: estado
+Potenciometro: AJUSTA el voltaje de VO+  <<< peligro si esta mal
+
+ANTES de conectar el ESP32:
+  1) Solo pilas en B+ B- (polaridad correcta)
+  2) Polimetro en VO+ y VO-
+  3) Girar pot hasta ~5.0 V (entre 4.8 y 5.2)
+  4) Si marca mucho mas (9V, 12V) NO conectar al ESP32
+  5) Luego: VO+ -> switch -> pin 5V ; VO- -> GND
+  6) Divisor de medicion sigue en B+ (no en VO+)
+
+La placita que hizo humo: NO reutilizar.
+
+===================================================
+VIN = pin serigrafiado 5V (lado derecho, debajo del GND de arriba).
+GPIO 3  = lado derecho, debajo de 46
+GPIO 46 = lado derecho, encima de 3
+GND     = varios; usar el GND de arriba a la derecha junto a 5V
+
+NO alimentar por 3V3 desde el pack.
+NO usar 35/36/37 (PSRAM).

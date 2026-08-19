@@ -1,0 +1,136 @@
+PASO A PASO — SOLDAR / CONECTAR (principiante)
+==============================================
+Haz UN paso, revisa, luego el siguiente.
+Pilas APAGADAS / sin USB de carga enchufado mientras sueldas.
+
+
+ANTES DE EMPEZAR
+----------------
+Material:
+  - Placita cargador (pads B+ B-  +  -)
+  - ESP32-S3 (el de la foto: pines 5V, GND, 3, 46)
+  - 5 pilas en paralelo (todos los + juntos, todos los - juntos)
+  - Interruptor (switch)
+  - 2 resistencias de 100k ohm
+  - Cable rojo y cable negro
+  - Cautin, estaño, (opcional) estaño en pasta
+
+En el ESP32 (lado derecho, de arriba):
+  GND  = tierra
+  5V   = alimentacion (entra energia)
+  46   = aviso de carga (opcional)
+  3    = medir pila
+
+
+PASO 1 — Positivo de las pilas a B+
+-----------------------------------
+Suelda el cable ROJO que sale del positivo de las baterias
+(todos los + unidos) al pad B+ de la placita cargador.
+
+  Baterias (+)  ----cable rojo---->  B+
+
+
+PASO 2 — Negativo de las pilas a B-
+-----------------------------------
+Suelda el cable NEGRO que sale del negativo de las baterias
+(todos los - unidos) al pad B- de la placita.
+
+  Baterias (-)  ----cable negro---->  B-
+
+
+PASO 3 — Tierra al ESP32
+------------------------
+Desde el mismo punto negro (B- / negativo de pilas), lleva otro
+cable NEGRO al pin GND del ESP32 (el de arriba a la derecha,
+junto al 5V).
+
+  B-  ----cable negro---->  GND del ESP32
+
+(Si quieres, del pad "-" de la placita tambien al mismo GND:
+es el mismo negro.)
+
+
+PASO 4 — Negativo de salida de la placita a tierra
+--------------------------------------------------
+Suelda el pad "-" (menos / salida) de la placita al mismo
+cable negro / GND.
+
+  Pad "-"  ----cable negro---->  GND (mismo que el paso 3)
+
+
+PASO 5 — Positivo de salida al interruptor
+------------------------------------------
+Suelda el pad "+" (mas / salida) de la placita a UN lado
+del interruptor (switch), con cable ROJO.
+
+  Pad "+"  ----cable rojo---->  terminal A del switch
+
+
+PASO 6 — Interruptor al pin 5V del ESP32
+----------------------------------------
+Del OTRO lado del interruptor, cable ROJO al pin 5V del ESP32
+(lado derecho, justo debajo del GND de arriba).
+
+  Terminal B del switch  ----cable rojo---->  pin 5V
+
+Eso enciende/apaga la placa: switch ON = ESP32 con energia.
+
+
+PASO 7 — Medir pila (GPIO 3) — primera resistencia
+--------------------------------------------------
+Suelda una resistencia 100k desde B+ (o desde el rojo de
+las pilas) hasta un punto medio (puedes usar un pequeño
+trozo de cable o soldar en el aire con cuidado).
+
+  B+  ---- 100k ---->  punto medio
+
+
+PASO 8 — Medir pila (GPIO 3) — segunda resistencia
+--------------------------------------------------
+Desde ese punto medio, suelda la OTRA resistencia 100k
+hasta GND (el negro / tierra).
+
+  punto medio  ---- 100k ---->  GND
+
+
+PASO 9 — Punto medio al pin 3
+-----------------------------
+Desde el mismo punto medio, cable fino al pin 3 del ESP32.
+
+  punto medio  ----cable---->  pin 3
+
+NUNCA conectes B+ directo al pin 3 sin las dos 100k.
+
+
+PASO 10 — (Opcional) Aviso de carga al pin 46
+---------------------------------------------
+Si quieres saber si esta cargando: suelda un cable fino desde
+el lado del LED de "carga" de la placita (o pad CHRG si lo tiene)
+hasta el pin 46 del ESP32.
+
+  LED/CHRG  ----cable---->  pin 46
+
+Si no lo haces ahora, igual puedes encender el TX.
+
+
+PASO 11 — Revisar antes de encender
+-----------------------------------
+Con el switch en OFF:
+  [ ] B+ solo va a positivo de pilas
+  [ ] Todos los negros juntos (B-, pad -, GND)
+  [ ] Pad + va al switch y del switch al 5V (no al 3V3)
+  [ ] Pin 3 solo toca el punto medio entre las dos 100k
+  [ ] No hay cortocircuito (rojo tocando negro)
+
+Luego: switch ON. La placa deberia encender.
+Para cargar pilas: USB en la placita (switch puede estar OFF).
+
+
+RESUMEN RAPIDO
+--------------
+1  (+) pilas -> B+
+2  (-) pilas -> B-
+3  B- / "-"  -> GND ESP32
+4  "+" placita -> switch -> 5V ESP32
+5  B+ --100k-- pin3 --100k-- GND
+6  (opcional) carga -> pin 46
