@@ -22,11 +22,10 @@ Al cambiar el mapa de botones, regrabar **las dos**.
 
 | Grupo | Botones | CC | Comportamiento | LED |
 |---|---|---|---|---|
-| Excluyente A | 1–6 | 30–35 | Solo uno activo | Azul |
-| Excluyente B | 7–8 | 20–21 | Solo uno activo | Verde |
-| Excluyente C | 9–11 | 22–24 | Solo uno activo | Amarillo |
-| Excluyente D | 12–16 | 25, 70–73 | Solo uno activo | Cian |
-| Toggle | 17–23 | 74–80 | Independientes | Morado |
+| Excluyente A | 1–6 | CC 30–35 | Solo uno activo | Azul |
+| Notas | 7–11 | C5 B4 C6 G6 A4 | Sin grupo: corto=momentánea, ≥350 ms=sostenida | Verde |
+| Excluyente D | 12–16 | CC 25, 70–73 | Solo uno activo | Cian |
+| Toggle | 17–23 | CC 74–80 | Independientes | Morado |
 
 Valor: **127** = encendido, **0** = apagado.
 

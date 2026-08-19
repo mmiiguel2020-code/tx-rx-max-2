@@ -34,12 +34,11 @@ COMO FUNCIONA
    5     15    34   KIT          kit 2 (canales 24-28) ____________
    6     16    35   KIT          kit 1 (canales 19-23) ____________
 
-   7      8    20   PAREJA       (MIDI Learn / mapear CC) ______________
-   8      9    21   PAREJA       (MIDI Learn / mapear CC) ______________
-
-   9     10    22   TRIO         (MIDI Learn / mapear CC) ______________
-  10     11    23   TRIO         (MIDI Learn / mapear CC) ______________
-  11     12    24   TRIO         (MIDI Learn / mapear CC) ______________
+   7      8   NOTE C5 (72)  HIBRIDA   corto=momentanea / >=350ms=sostenida
+   8      9   NOTE B4 (71)  HIBRIDA   otra pulsacion apaga si estaba sostenida
+   9     10   NOTE C6 (84)  HIBRIDA   idem
+  10     11   NOTE G6 (91)  HIBRIDA   idem
+  11     12   NOTE A4 (69)  HIBRIDA   idem
 
   12     13    25   QUINTETO     (MIDI Learn / mapear CC) ______________
   13      1    70   QUINTETO     (MIDI Learn / mapear CC) ______________
@@ -73,11 +72,11 @@ COMO FUNCIONA
    Los canales entre parentesis son el reparto que usabas con
    el script viejo; ahora se mapean con MIDI Learn / mapear CC.
 
- PAREJA  (botones 7-8, CC 20-21)       LED VERDE
-   Excluyentes entre los dos.
-
- TRIO  (botones 9-11, CC 22-24)        LED AMARILLO
-   Excluyentes entre los tres.
+ NOTAS  (botones 7-11) — SIN GRUPO, LED VERDE
+   Cinco notas independientes (no se apagan entre si).
+   Toque corto (<350 ms): momentanea (Off al soltar).
+   Mantener >=350 ms: sostenida (sigue On al soltar; otra pulsacion Off).
+   C5=72  B4=71  C6=84  G6=91  A4=69
 
  QUINTETO  (botones 12-16, CC 25 y 70-73)   LED CIAN
    Excluyentes entre los cinco: solo uno encendido a la vez.
@@ -88,9 +87,7 @@ COMO FUNCIONA
    Independientes: cada uno va por su cuenta.
    Pulsas y se queda encendido, vuelves a pulsar y se apaga.
 
- Los cuatro grupos son independientes entre si: puedes tener
- a la vez un kit, uno de la pareja, uno del trio, uno del
- quinteto y los on/off que quieras.
+ Kits, notas, quinteto y on/off son independientes entre si.
 
 
 ===========================================================

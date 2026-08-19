@@ -35,8 +35,6 @@ void ledUpdate() {
 CRGB groupColor(uint8_t group) {
   switch (group) {
     case 1:  return CRGB::Blue;    // kits 1-6
-    case 2:  return CRGB::Green;   // grupo de 2
-    case 3:  return CRGB::Yellow;  // grupo de 3
     case 4:  return CRGB::Cyan;    // grupo de 5
     default: return CRGB::Purple;  // on/off
   }
@@ -56,7 +54,8 @@ CRGB groupColor(uint8_t group) {
 // MAPA DE BOTONES  (compartido por TX y RX: si tocas esto, reflashea las dos)
 //
 // group 0 = on/off libre. group > 0 = excluyente dentro de ese grupo.
-// pin solo lo usa el TX; el RX solo necesita cc y el orden de la tabla.
+// pin solo lo usa el TX; el RX solo necesita midi/kind y el orden de la tabla.
+// kind: KIND_CC = Control Change, KIND_NOTE = Note On/Off (numero MIDI).
 //
 // Pines descartados en el ESP32-S3 y por que:
 //   0, 45, 46         strapping (condicionan el arranque)
@@ -68,13 +67,17 @@ CRGB groupColor(uint8_t group) {
 // GPIO 3 = ADC bateria (divisor 100k/100k desde B+). Es strapping suave;
 // el divisor no lo fuerza a 0/3V3 al arrancar.
 // ---------------------------------------------------------------------------
+static constexpr uint8_t KIND_CC = 0;
+static constexpr uint8_t KIND_NOTE = 1;
+
 struct ButtonDef {
   uint8_t pin;
-  uint8_t cc;
+  uint8_t midi;   // CC number o note number
   uint8_t group;
+  uint8_t kind;
 };
 
-// Telemetria de bateria (solo TX mide; RX traduce a MIDI CC)
+// Telemetria de bateria (solo TX mide; RX no la manda por MIDI)
 static constexpr uint8_t BAT_ADC_PIN = 3;
 // -1 = no cableado (usuario omitio CHRG). Si luego sueldas CHRG, pon 46.
 static constexpr int8_t BAT_CHRG_PIN = -1;
@@ -84,18 +87,25 @@ static constexpr uint8_t BAT_LOW_PERCENT = 20;
 static constexpr float BAT_DIVIDER_RATIO = 2.0f;  // 100k + 100k
 static constexpr uint32_t BAT_SAMPLE_MS = 500;
 
+// Notas MIDI (botones 7-11): toque corto = momentanea; mantener >=350 ms = sostenida
+// (sigue sonando al soltar; otra pulsacion la apaga). C5 B4 C6 G6 A4
 static constexpr ButtonDef BUTTONS[] = {
-    // Botones 1-6: kits, excluyentes entre si
-    {4, 30, 1},  {5, 31, 1},  {6, 32, 1},  {7, 33, 1},  {15, 34, 1}, {16, 35, 1},
-    // Botones 7-8: grupo de 2, excluyentes entre si
-    {8, 20, 2},  {9, 21, 2},
-    // Botones 9-11: grupo de 3, excluyentes entre si
-    {10, 22, 3}, {11, 23, 3}, {12, 24, 3},
-    // Botones 12-16: grupo de 5, excluyentes entre si
-    {13, 25, 4}, {1, 70, 4},  {2, 71, 4},  {14, 72, 4}, {17, 73, 4},
-    // Botones 17-23: on/off independientes
-    {18, 74, 0}, {21, 75, 0}, {39, 76, 0}, {40, 77, 0}, {41, 78, 0},
-    {42, 79, 0}, {47, 80, 0},
+    // Botones 1-6: kits, excluyentes entre si (CC)
+    {4, 30, 1, KIND_CC},  {5, 31, 1, KIND_CC},  {6, 32, 1, KIND_CC},
+    {7, 33, 1, KIND_CC},  {15, 34, 1, KIND_CC}, {16, 35, 1, KIND_CC},
+    // Botones 7-11: 5 notas sueltas (sin grupo excluyente). Hibridas corto/largo.
+    {8, 72, 0, KIND_NOTE},   // C5
+    {9, 71, 0, KIND_NOTE},   // B4
+    {10, 84, 0, KIND_NOTE},  // C6
+    {11, 91, 0, KIND_NOTE},  // G6
+    {12, 69, 0, KIND_NOTE},  // A4
+    // Botones 12-16: grupo de 5, excluyentes entre si (CC)
+    {13, 25, 4, KIND_CC}, {1, 70, 4, KIND_CC},  {2, 71, 4, KIND_CC},
+    {14, 72, 4, KIND_CC}, {17, 73, 4, KIND_CC},
+    // Botones 17-23: on/off independientes (CC)
+    {18, 74, 0, KIND_CC}, {21, 75, 0, KIND_CC}, {39, 76, 0, KIND_CC},
+    {40, 77, 0, KIND_CC}, {41, 78, 0, KIND_CC}, {42, 79, 0, KIND_CC},
+    {47, 80, 0, KIND_CC},
 };
 
 static constexpr uint8_t BUTTON_COUNT = sizeof(BUTTONS) / sizeof(BUTTONS[0]);
@@ -103,6 +113,8 @@ static_assert(BUTTON_COUNT <= 32, "La mascara del paquete es de 32 bits");
 
 static constexpr uint8_t MIDI_CHANNEL = 1;
 static constexpr uint32_t DEBOUNCE_MS = 20;
+// Mantener la nota este tiempo (o mas) al soltar = queda sostenida
+static constexpr uint32_t NOTE_SUSTAIN_HOLD_MS = 350;
 
 struct __attribute__((packed)) EspNowStatePacket {
   uint8_t version;
@@ -125,6 +137,8 @@ static constexpr uint8_t BROADCAST_MAC[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
 bool physicalPressed[BUTTON_COUNT] = {};
 bool buttonState[BUTTON_COUNT] = {};
 uint32_t lastChangeMs[BUTTON_COUNT] = {};
+uint32_t noteDownMs[BUTTON_COUNT] = {};
+bool noteIgnoreRelease[BUTTON_COUNT] = {};  // tras apagar una nota sostenida
 EspNowStatePacket txPacket = {PACKET_VERSION, 0, 0xFF, 0, 0, 0, 0, 0};
 uint32_t lastTxMs = 0;
 uint32_t lastUserActivityMs = 0;
@@ -136,6 +150,7 @@ uint8_t pressCount = 0;
 uint8_t batPercent = 0;
 uint8_t batFlags = 0;
 uint16_t batMv = 0;
+int8_t serialNoteHold = -1;  // simula toque corto por serie
 static constexpr uint32_t TX_HEARTBEAT_MS = 1000;
 // 0 = sin deep sleep. En vivo no interesa que se duerma a mitad de tema.
 static constexpr uint32_t TX_IDLE_DEEP_SLEEP_MS = 0;
@@ -146,6 +161,8 @@ void initButtons() {
     pinMode(BUTTONS[i].pin, INPUT_PULLUP);
     physicalPressed[i] = (digitalRead(BUTTONS[i].pin) == LOW);
     buttonState[i] = false;
+    noteDownMs[i] = 0;
+    noteIgnoreRelease[i] = false;
   }
 }
 
@@ -209,12 +226,13 @@ void initLog() {
   Serial.printf(" Botones: %u\n", BUTTON_COUNT);
   Serial.printf(" Bateria ADC GPIO%u  CHRG=%d\n", BAT_ADC_PIN, (int)BAT_CHRG_PIN);
   Serial.println("=========================================");
-  Serial.println(" n   GPIO  CC   grupo  nivel");
+  Serial.println(" n   GPIO  MIDI kind grupo  nivel");
   uint8_t wired = 0;
   for (uint8_t i = 0; i < BUTTON_COUNT; i++) {
     const bool low = (digitalRead(BUTTONS[i].pin) == LOW);
     if (low) wired++;
-    Serial.printf("%2u   %-4u  %-3u  %-5u  %s\n", i + 1, BUTTONS[i].pin, BUTTONS[i].cc,
+    Serial.printf("%2u   %-4u  %-4u %-4s %-5u  %s\n", i + 1, BUTTONS[i].pin, BUTTONS[i].midi,
+                  BUTTONS[i].kind == KIND_NOTE ? "NOTE" : "CC",
                   BUTTONS[i].group, low ? "LOW  <- pulsado o a masa" : "alto (en reposo)");
   }
   Serial.printf("Pines en LOW ahora mismo: %u\n", wired);
@@ -241,7 +259,8 @@ bool applyPress(uint8_t i) {
     changed = true;
   }
   if (changed) {
-    Serial.printf("  -> boton %u  CC%u = %u  (grupo %u)\n", i + 1, BUTTONS[i].cc,
+    Serial.printf("  -> boton %u  %s%u = %u  (grupo %u)\n", i + 1,
+                  BUTTONS[i].kind == KIND_NOTE ? "NOTE" : "CC", BUTTONS[i].midi,
                   buttonState[i] ? 127 : 0, group);
   } else {
     Serial.printf("  -> boton %u ya estaba activo, sin cambio\n", i + 1);
@@ -259,11 +278,53 @@ bool scanButtons(uint32_t nowMs) {
     physicalPressed[i] = pressedNow;
     Serial.printf("GPIO%-2u boton %-2u %s\n", BUTTONS[i].pin, i + 1,
                   pressedNow ? "pulsado" : "soltado");
+
+    if (BUTTONS[i].kind == KIND_NOTE) {
+      // Toque corto: On al pulsar, Off al soltar.
+      // Mantener >= NOTE_SUSTAIN_HOLD_MS: queda On al soltar; otra pulsacion apaga.
+      if (pressedNow) {
+        ledFlash(CRGB::Green);
+        lastPressedIndex = i;
+        pressCount++;
+        if (buttonState[i]) {
+          // Estaba sostenida: esta pulsacion la apaga
+          buttonState[i] = false;
+          noteIgnoreRelease[i] = true;
+          Serial.printf("  -> boton %u  NOTE%u Off (fin sostenida)\n", i + 1, BUTTONS[i].midi);
+        } else {
+          buttonState[i] = true;
+          noteDownMs[i] = nowMs;
+          noteIgnoreRelease[i] = false;
+          Serial.printf("  -> boton %u  NOTE%u On\n", i + 1, BUTTONS[i].midi);
+        }
+      } else {
+        if (noteIgnoreRelease[i]) {
+          noteIgnoreRelease[i] = false;
+          changed = true;
+          continue;
+        }
+        const uint32_t held = nowMs - noteDownMs[i];
+        if (held < NOTE_SUSTAIN_HOLD_MS) {
+          buttonState[i] = false;
+          Serial.printf("  -> boton %u  NOTE%u Off (momentanea %lums)\n", i + 1,
+                        BUTTONS[i].midi, (unsigned long)held);
+        } else {
+          // Sostenida: mask sigue en 1
+          Serial.printf("  -> boton %u  NOTE%u sostenida (%lums)\n", i + 1, BUTTONS[i].midi,
+                        (unsigned long)held);
+          // Sin cambio de mask → igual hay que avisar actividad/LED; mask no cambia
+          // pero pressCount ya subio al pulsar. No hace falta reenviar si mask igual;
+          // changed=false evitaria latido extra. OK no marcar changed.
+          continue;
+        }
+      }
+      changed = true;
+      continue;
+    }
+
     if (!pressedNow) continue;
     ledFlash(groupColor(BUTTONS[i].group));
     applyPress(i);
-    // Se envia siempre, cambie el estado o no: la pulsacion en si ya es
-    // informacion, y asi el RX puede confirmarla con su LED y su CC.
     lastPressedIndex = i;
     pressCount++;
     changed = true;
@@ -288,11 +349,26 @@ bool handleSerialCommands() {
     len = 0;
     const int n = atoi(buf);
     if (n >= 1 && n <= BUTTON_COUNT) {
+      const uint8_t i = (uint8_t)(n - 1);
       Serial.printf("SIMULADO boton %d\n", n);
-      ledFlash(groupColor(BUTTONS[n - 1].group));
-      applyPress((uint8_t)(n - 1));
-      lastPressedIndex = (uint8_t)(n - 1);
-      pressCount++;
+      if (BUTTONS[i].kind == KIND_NOTE) {
+        ledFlash(CRGB::Green);
+        if (buttonState[i]) {
+          buttonState[i] = false;
+          Serial.printf("  -> NOTE%u Off (serie)\n", BUTTONS[i].midi);
+        } else {
+          buttonState[i] = true;
+          serialNoteHold = (int8_t)i;  // toque corto simulado
+          Serial.printf("  -> NOTE%u On momentanea (serie)\n", BUTTONS[i].midi);
+        }
+        lastPressedIndex = i;
+        pressCount++;
+      } else {
+        ledFlash(groupColor(BUTTONS[i].group));
+        applyPress(i);
+        lastPressedIndex = i;
+        pressCount++;
+      }
       changed = true;
     } else {
       Serial.printf("Fuera de rango, usa 1..%u\n", BUTTON_COUNT);
@@ -372,15 +448,26 @@ void sendCC(uint8_t cc, uint8_t value) {
   sendMidi3(0xB0 | (MIDI_CHANNEL - 1), cc, value);
 }
 
+void sendNote(uint8_t note, bool on) {
+  if (on) sendMidi3(0x90 | (MIDI_CHANNEL - 1), note, 127);
+  else sendMidi3(0x80 | (MIDI_CHANNEL - 1), note, 0);
+}
+
+void sendButtonMidi(uint8_t i, bool on) {
+  if (BUTTONS[i].kind == KIND_NOTE) sendNote(BUTTONS[i].midi, on);
+  else sendCC(BUTTONS[i].midi, on ? 127 : 0);
+}
+
 // Panel de escritorio: entra por USB MIDI en canal 16 y se reenvia a FL como
 // canal 1. FL nunca manda en canal 16, asi que no puede realimentarse.
 static constexpr uint8_t PANEL_STATUS = 0xBF;
 static constexpr uint8_t NO_CHANGE = 0xFF;
+static constexpr uint8_t NOTE_LED = 0xFE;  // LED verde en RX para notas
 
-// Grupo del boton que usa ese CC, o NO_CHANGE si el CC no es nuestro
+// Solo CCs del mapa (no notas: 71/72 chocan con CC del quinteto)
 static inline uint8_t ccGroup(uint8_t cc) {
   for (uint8_t i = 0; i < BUTTON_COUNT; i++) {
-    if (BUTTONS[i].cc == cc) return BUTTONS[i].group;
+    if (BUTTONS[i].kind == KIND_CC && BUTTONS[i].midi == cc) return BUTTONS[i].group;
   }
   return NO_CHANGE;
 }
@@ -413,7 +500,7 @@ uint8_t echoPanelMidi(const uint8_t *data, uint32_t len) {
 void sendAllStateToMidi() {
   if (!tud_midi_mounted()) return;
   for (uint8_t i = 0; i < BUTTON_COUNT; i++) {
-    sendCC(BUTTONS[i].cc, (rxMask & (1UL << i)) ? 127 : 0);
+    sendButtonMidi(i, (rxMask & (1UL << i)) != 0);
   }
 }
 
@@ -424,14 +511,11 @@ void trackBatteryFromPacket(const EspNowStatePacket &packet) {
   rxBatFlags = packet.batFlags;
 }
 
-// Devuelve el grupo del boton implicado, o NO_CHANGE si el paquete es solo el
-// latido que el TX repite cada segundo.
+// Devuelve el grupo del boton implicado, NOTE_LED, o NO_CHANGE si es solo latido.
 uint8_t applyPacketToMidi(const EspNowStatePacket &packet) {
   const uint32_t diff = packet.mask ^ rxMask;
   rxMask = packet.mask;
 
-  // pressCount sube en cada pulsacion aunque el estado no cambie, para que
-  // repetir el excluyente ya activo tambien de senal de vida.
   bool huboPulsacion = false;
   if (!rxSeenFirstPacket) {
     rxSeenFirstPacket = true;
@@ -445,30 +529,30 @@ uint8_t applyPacketToMidi(const EspNowStatePacket &packet) {
   const bool canSend = tud_midi_mounted();
 
   if (diff) {
-    uint8_t changedGroup = 0;
+    uint8_t ledHint = NO_CHANGE;
     for (uint8_t i = 0; i < BUTTON_COUNT; i++) {
       if (diff & (1UL << i)) {
-        changedGroup = BUTTONS[i].group;
+        ledHint = (BUTTONS[i].kind == KIND_NOTE) ? NOTE_LED : BUTTONS[i].group;
         break;
       }
     }
     if (canSend) {
-      // Primero los que se apagan: al cambiar de kit evita que suenen dos a la vez
+      // Primero los que se apagan (Note Off / CC 0)
       for (uint8_t i = 0; i < BUTTON_COUNT; i++) {
-        if ((diff & (1UL << i)) && !(packet.mask & (1UL << i))) sendCC(BUTTONS[i].cc, 0);
+        if ((diff & (1UL << i)) && !(packet.mask & (1UL << i))) sendButtonMidi(i, false);
       }
       for (uint8_t i = 0; i < BUTTON_COUNT; i++) {
-        if ((diff & (1UL << i)) && (packet.mask & (1UL << i))) sendCC(BUTTONS[i].cc, 127);
+        if ((diff & (1UL << i)) && (packet.mask & (1UL << i))) sendButtonMidi(i, true);
       }
     }
-    return changedGroup;
+    return ledHint;
   }
 
-  // Pulsacion sin cambio de estado: reafirmamos el valor de ese boton
+  // Pulsacion sin cambio de estado (solo CC excluyentes): reafirma
   const uint8_t i = packet.lastPressed;
   if (i >= BUTTON_COUNT) return NO_CHANGE;
-  if (canSend) sendCC(BUTTONS[i].cc, (rxMask & (1UL << i)) ? 127 : 0);
-  return BUTTONS[i].group;
+  if (canSend) sendButtonMidi(i, (rxMask & (1UL << i)) != 0);
+  return (BUTTONS[i].kind == KIND_NOTE) ? NOTE_LED : BUTTONS[i].group;
 }
 #endif
 
@@ -559,6 +643,15 @@ void loop() {
       updatePacketFromState();
       esp_now_send(BROADCAST_MAC, reinterpret_cast<const uint8_t *>(&txPacket), sizeof(txPacket));
       lastTxMs = now;
+      // Tras simular NOTE On por serie, soltar en el siguiente ciclo
+      if (serialNoteHold >= 0) {
+        buttonState[(uint8_t)serialNoteHold] = false;
+        serialNoteHold = -1;
+        updatePacketFromState();
+        esp_now_send(BROADCAST_MAC, reinterpret_cast<const uint8_t *>(&txPacket),
+                     sizeof(txPacket));
+        lastTxMs = millis();
+      }
     }
   }
   if (now - lastTxMs >= TX_HEARTBEAT_MS) {
@@ -622,8 +715,11 @@ void loop() {
     trackBatteryFromPacket(packetToApply);
     // Solo parpadea si cambio un boton, no con cada latido del TX
     const uint8_t group = applyPacketToMidi(packetToApply);
-    if (group != NO_CHANGE) ledFlash(midiMounted ? groupColor(group) : CRGB::Red);
-    else if ((packetToApply.batFlags & BAT_FLAG_LOW) && midiMounted) {
+    if (group != NO_CHANGE) {
+      CRGB c = CRGB::Red;
+      if (midiMounted) c = (group == NOTE_LED) ? CRGB::Green : groupColor(group);
+      ledFlash(c);
+    } else if ((packetToApply.batFlags & BAT_FLAG_LOW) && midiMounted) {
       // Destello naranja solo con pila baja (sin MIDI CC)
       static uint32_t lastLowFlashMs = 0;
       const uint32_t t = millis();
