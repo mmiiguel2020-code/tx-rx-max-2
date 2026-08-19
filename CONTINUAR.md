@@ -1,10 +1,11 @@
-﻿CONTINUAR — MIDI universal OK (19 ago 2026 ~5:25)
+﻿CONTINUAR — MIDI universal OK (19 ago 2026 ~6:03)
 =================================================
 
 ESTADO
 ------
-TX y RX reflasheados y funcionando (ambas LEDs parpadean).
-RX USB aparece como: ESP32-S3 MIDI Trigger
+TX y RX reflasheados y funcionando.
+RX USB: ESP32-S3 MIDI Trigger
+Bateria sin CC MIDI (Learn limpio); carga por LED/Serial.
 
 FIRMWARE
 --------
@@ -12,7 +13,8 @@ FIRMWARE
   Local: Documents\esp32-live
   TX MAC dc:b4:d9:13:5f:f4
   RX MAC fc:01:2c:cc:69:b8
-  Bateria GPIO3 → MIDI CC 110 (%), 111 (cargando), 112 (low <20%)
+  Bateria GPIO3 → LED TX (verde/amarillo/rojo) + Serial; NO MIDI CC
+  (CC 110 rompia Link to controller / MIDI Learn)
 
 HOST MIDI (cualquier DAW)
 -------------------------

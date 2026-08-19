@@ -30,15 +30,12 @@ Al cambiar el mapa de botones, regrabar **las dos**.
 
 Valor: **127** = encendido, **0** = apagado.
 
-Batería (opcional, GPIO3 + divisor 100k):
+Batería (GPIO3 + divisor 100k): **no va por MIDI** (rompía MIDI Learn).
+Ver carga en LED del TX (verde / amarillo / rojo cada ~10 s) o en Serial
+del TX (`bat=…mV …%`). Pila baja: LED naranja en el RX. Detalle:
+`docs/BATERIA_MIDI.txt`.
 
-| CC | Significado |
-|---|---|
-| 110 | % carga 0–127 |
-| 111 | 127 si cargando (si CHRG cableado) |
-| 112 | 127 si batería &lt; 20% |
-
-Detalle GPIO: `docs/MAPA_BOTONES.txt`
+Detalle GPIO botones: `docs/MAPA_BOTONES.txt`
 
 ## Uso en cualquier DAW / host MIDI
 

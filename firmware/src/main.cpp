@@ -78,9 +78,8 @@ struct ButtonDef {
 static constexpr uint8_t BAT_ADC_PIN = 3;
 // -1 = no cableado (usuario omitio CHRG). Si luego sueldas CHRG, pon 46.
 static constexpr int8_t BAT_CHRG_PIN = -1;
-static constexpr uint8_t CC_BAT_PERCENT = 110;  // 0-127
-static constexpr uint8_t CC_BAT_CHARGING = 111; // 0 / 127
-static constexpr uint8_t CC_BAT_LOW = 112;      // 0 / 127 si < 20%
+// Bateria YA NO se manda por MIDI CC: ensuciaba MIDI Learn / Link to controller
+// (FL capturaba CC 110 en vez del boton). % se ve en Serial TX y LED.
 static constexpr uint8_t BAT_LOW_PERCENT = 20;
 static constexpr float BAT_DIVIDER_RATIO = 2.0f;  // 100k + 100k
 static constexpr uint32_t BAT_SAMPLE_MS = 500;
@@ -416,30 +415,13 @@ void sendAllStateToMidi() {
   for (uint8_t i = 0; i < BUTTON_COUNT; i++) {
     sendCC(BUTTONS[i].cc, (rxMask & (1UL << i)) ? 127 : 0);
   }
-  if (rxBatPercent != 0xFF) {
-    const uint8_t ccPct = (uint8_t)((rxBatPercent * 127UL) / 100UL);
-    sendCC(CC_BAT_PERCENT, ccPct);
-    sendCC(CC_BAT_CHARGING, (rxBatFlags & BAT_FLAG_CHARGING) ? 127 : 0);
-    sendCC(CC_BAT_LOW, (rxBatFlags & BAT_FLAG_LOW) ? 127 : 0);
-  }
 }
 
-void sendBatteryMidi(const EspNowStatePacket &packet) {
-  if (!tud_midi_mounted()) return;
-  // 0xFF = paquete v3 sin bateria (TX aun no reflasheado)
+// Solo actualiza estado interno + LED; no emite CC (rompe MIDI Learn).
+void trackBatteryFromPacket(const EspNowStatePacket &packet) {
   if (packet.batPercent == 0xFF) return;
-  const uint8_t pct = packet.batPercent > 100 ? 100 : packet.batPercent;
-  const uint8_t flags = packet.batFlags;
-  const uint8_t ccPct = (uint8_t)((pct * 127UL) / 100UL);
-  if (pct != rxBatPercent) {
-    sendCC(CC_BAT_PERCENT, ccPct);
-    rxBatPercent = pct;
-  }
-  if (flags != rxBatFlags) {
-    sendCC(CC_BAT_CHARGING, (flags & BAT_FLAG_CHARGING) ? 127 : 0);
-    sendCC(CC_BAT_LOW, (flags & BAT_FLAG_LOW) ? 127 : 0);
-    rxBatFlags = flags;
-  }
+  rxBatPercent = packet.batPercent > 100 ? 100 : packet.batPercent;
+  rxBatFlags = packet.batFlags;
 }
 
 // Devuelve el grupo del boton implicado, o NO_CHANGE si el paquete es solo el
@@ -593,6 +575,17 @@ void loop() {
                     (unsigned)batFlags, rc == ESP_OK ? "ok" : esp_err_to_name(rc));
     }
   }
+  // Destello de carga cada 10 s si el LED esta libre (verde/amarillo/rojo)
+  {
+    static uint32_t lastBatLedMs = 0;
+    if (!ledOn && now - lastBatLedMs >= 10000) {
+      lastBatLedMs = now;
+      CRGB c = CRGB::Green;
+      if (batPercent < BAT_LOW_PERCENT) c = CRGB::Red;
+      else if (batPercent < 60) c = CRGB::Yellow;
+      ledFlash(c);
+    }
+  }
   ledUpdate();
   enterDeepSleepIfIdle(now);
   delay(1);
@@ -626,12 +619,12 @@ void loop() {
   portEXIT_CRITICAL(&rxPacketMux);
 
   if (hasPendingPacket) {
-    sendBatteryMidi(packetToApply);
+    trackBatteryFromPacket(packetToApply);
     // Solo parpadea si cambio un boton, no con cada latido del TX
     const uint8_t group = applyPacketToMidi(packetToApply);
     if (group != NO_CHANGE) ledFlash(midiMounted ? groupColor(group) : CRGB::Red);
     else if ((packetToApply.batFlags & BAT_FLAG_LOW) && midiMounted) {
-      // Destello corto rojo solo cuando llega alerta de pila baja (latido)
+      // Destello naranja solo con pila baja (sin MIDI CC)
       static uint32_t lastLowFlashMs = 0;
       const uint32_t t = millis();
       if (t - lastLowFlashMs > 3000) {
