@@ -23,7 +23,8 @@ Al cambiar el mapa de botones, regrabar **las dos**.
 | Grupo | Botones | CC | Comportamiento | LED |
 |---|---|---|---|---|
 | Excluyente A | 1–6 | CC 30–35 | Solo uno activo | Azul |
-| Notas | 7–11 | C5 B4 C6 G6 A4 | Sin grupo: corto=momentánea, ≥350 ms=sostenida | Verde |
+| Notas TX | 7–11 | FL C5 B4 C6 G6 A4 | Momentáneas On/Off | Verde |
+| Pads RX | 24 GPIO | 12 notas 5ª/6ª + CC 81–92 | Momentáneos; ver MAPA | Cian |
 | Excluyente D | 12–16 | CC 25, 70–73 | Solo uno activo | Cian |
 | Toggle | 17–23 | CC 74–80 | Independientes | Morado |
 
