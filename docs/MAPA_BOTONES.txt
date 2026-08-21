@@ -62,19 +62,21 @@ NOTAS DE TONO (TX y RX)
  R11     12  NOTE   71           B5
  R12     13  NOTE   74           D6
 
- R13     14  CC     81           momentaneo
- R14     15  CC     82           momentaneo
- R15     16  CC     83           momentaneo
- R16     17  CC     84           momentaneo
- R17     18  CC     85           momentaneo
- R18     21  CC     86           momentaneo
- R19     39  CC     87           momentaneo
- R20     40  CC     88           momentaneo
- R21     41  CC     89           momentaneo
- R22     42  CC     90           momentaneo
- R23     47  CC     91           momentaneo
- R24      3  CC     92           momentaneo (cuidado al boot)
+ R13     14  CC     81           latch on/off
+ R14     15  CC     82           latch on/off
+ R15     16  CC     83           latch on/off
+ R16     17  CC     84           latch on/off
+ R17     18  CC     85           latch on/off
+ R18     21  CC     86           latch on/off
+ R19     39  CC     87           latch on/off
+ R20     40  CC     88           momentaneo (Play hold)
+ R21     41  CC     89           latch on/off
+ R22     42  CC     90           latch on/off
+ R23     47  CC     91           latch on/off
+ R24      3  CC     92           latch on/off (cuidado al boot)
 
+Notas RX = momentaneas (pulsar On / soltar Off).
+CC RX = latch, EXCEPTO CC 88 = momentaneo (pulsar On / soltar Off).
 Notas RX = 5a/6a octava FL, sin las 5 del TX (C5 B4 C6 G6 A4).
 
 PINES PROHIBIDOS H16R8

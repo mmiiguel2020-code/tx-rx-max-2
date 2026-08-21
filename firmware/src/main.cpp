@@ -117,7 +117,9 @@ static constexpr uint32_t DEBOUNCE_MS = 20;
 
 // ---------------------------------------------------------------------------
 // RX local (H16R8): 12 notas (5a/6a octava FL, sin las 5 del TX) + 12 CC
-// Momentaneos: pulsar=127 / soltar=0. Cable: GPIO -- boton -- GND.
+// Notas: momentaneas (pulsar=On / soltar=Off).
+// CC: latch on/off, EXCEPTO CC 88 (momentaneo: pulsar On / soltar Off).
+// Cable: GPIO -- boton -- GND.
 // GPIO3: strapping suave; no lo mantengas pulsado al resetear.
 // ---------------------------------------------------------------------------
 #if defined(ROLE_RX)
@@ -127,9 +129,16 @@ struct RxPadDef {
   uint8_t kind;
 };
 
+// CC 88 = hold Play (Space): debe ser momentaneo aunque el resto de CC sea latch.
+static constexpr uint8_t RX_CC_MOMENTARY = 88;
+
+static inline bool rxCcIsMomentary(uint8_t midi) {
+  return midi == RX_CC_MOMENTARY;
+}
+
 // Notas excluidas (ya en TX): C5=60 B4=59 C6=72 G6=79 A4=57
 static constexpr RxPadDef RX_PADS[] = {
-    // 12 notas FL: C#5..B5 + D6
+    // 12 notas FL: C#5..B5 + D6 (momentaneas)
     {1,  61, KIND_NOTE},  // C#5
     {2,  62, KIND_NOTE},  // D5
     {4,  63, KIND_NOTE},  // D#5
@@ -142,7 +151,7 @@ static constexpr RxPadDef RX_PADS[] = {
     {11, 70, KIND_NOTE},  // A#5
     {12, 71, KIND_NOTE},  // B5
     {13, 74, KIND_NOTE},  // D6
-    // 12 CC momentaneos 81-92
+    // CC 81-87, 89-92 latch; CC 88 momentaneo
     {14, 81, KIND_CC},
     {15, 82, KIND_CC},
     {16, 83, KIND_CC},
@@ -150,7 +159,7 @@ static constexpr RxPadDef RX_PADS[] = {
     {18, 85, KIND_CC},
     {21, 86, KIND_CC},
     {39, 87, KIND_CC},
-    {40, 88, KIND_CC},
+    {40, 88, KIND_CC},  // momentaneo (Play hold)
     {41, 89, KIND_CC},
     {42, 90, KIND_CC},
     {47, 91, KIND_CC},
@@ -483,6 +492,7 @@ void initRxPads() {
 }
 
 // Escanea pads locales del RX. Devuelve true si hubo actividad (para LED).
+// Notas + CC 88 = momentaneos. Resto de CC = latch on/off al pulsar.
 bool scanRxPads(uint32_t nowMs) {
   bool activity = false;
   for (uint8_t i = 0; i < RX_PAD_COUNT; i++) {
@@ -491,15 +501,30 @@ bool scanRxPads(uint32_t nowMs) {
     if (nowMs - rxPadLastChangeMs[i] < DEBOUNCE_MS) continue;
     rxPadLastChangeMs[i] = nowMs;
     rxPadPhysical[i] = pressedNow;
-    rxPadState[i] = pressedNow;
-    if (tud_midi_mounted()) sendRxPadMidi(i, pressedNow);
+
+    const bool momentary = (RX_PADS[i].kind == KIND_NOTE) ||
+                           (RX_PADS[i].kind == KIND_CC && rxCcIsMomentary(RX_PADS[i].midi));
+
+    if (momentary) {
+      // Pulsar On, soltar Off
+      rxPadState[i] = pressedNow;
+      // Siempre intentar enviar: tud_midi_mounted() a veces falla en Win
+      // aunque el dispositivo ya aparece como MIDI Trigger.
+      sendRxPadMidi(i, pressedNow);
+      activity = true;
+      continue;
+    }
+
+    // CC latch: solo al pulsar; soltar no manda MIDI
+    if (!pressedNow) continue;
+    rxPadState[i] = !rxPadState[i];
+    sendRxPadMidi(i, rxPadState[i]);
     activity = true;
   }
   return activity;
 }
 
 void sendAllRxPadsToMidi() {
-  if (!tud_midi_mounted()) return;
   for (uint8_t i = 0; i < RX_PAD_COUNT; i++) {
     sendRxPadMidi(i, rxPadState[i]);
   }
